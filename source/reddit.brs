@@ -182,7 +182,7 @@ Function NewRedditVideoList(jsonObject As Object) As Object
         domain = LCase(record.data.domain).Trim()
         if (domain = "youtube.com" OR domain = "youtu.be") then
             video = NewRedditVideo(record)
-            if (video.GetID() <> invalid AND video.GetID() <> "") then
+            if (video["ID"] <> invalid AND video["ID"] <> "") then
                 videoList.Push(video)
             end if
         end if
@@ -223,52 +223,37 @@ End Function
 ' Creates a video roAssociativeArray, with the appropriate members needed to set Content Metadata and play a video with
 ' @param jsonObject the JSON "data" object that was received in QueryReddit, this is one result of many
 ' @return an roAssociativeArray of metadata for the current result
-' TODO: There's no reason these are functions
 '******************************************************************************
 Function NewRedditVideo(jsonObject As Object) As Object
     video               = CreateObject("roAssociativeArray")
-    ' video.youtube       = m
-    video.json          = jsonObject
-    video.GetID         = function()
-        ' Regex found on the internets here: http://stackoverflow.com/questions/3452546/javascript-regex-how-to-get-youtube-video-id-from-url
-        idMatches = CreateObject("roRegex", ".*(?:youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=)([^#\&\?]*).*", "").Match(m.json.data.url)
-        id = invalid
-        if (idMatches.Count() > 1) then
-            id = idMatches[1]
-        end if
-        return id
-    end function
-    video.GetTitle      = function()
-        return m.json.data.title
-        title = m.json.data.url
-        if (m.json.data.media <> invalid AND m.json.data.media.oembed <> invalid) then
-            title = m.json.data.media.oembed.title
-        end if
-        return title
-    end function
-    video.GetCategory   = function(): return "/r/" + m.json.data.subreddit: end function
-    video.GetDesc       = function()
+    ' The URL needs to be decoded prior to attempting to match
+    idMatches = LoadYouTube().ytIDRegex.Match( URLDecode( jsonObject.data.url) )
+    id = invalid
+    if (idMatches.Count() > 1) then
+        id = idMatches[1]
+    end if
+    video["ID"]            = id
+    video["Title"]         = Left(htmlDecode( jsonObject.data.title ), 100)
+    video["Category"]      = "/r/" + jsonObject.data.subreddit
+    desc = ""
+    if ( jsonObject.data.media <> invalid AND jsonObject.data.media.oembed <> invalid ) then
+        desc = jsonObject.data.media.oembed.description
+    end if
+    if ( desc = invalid ) then
         desc = ""
-        if (m.json.data.media <> invalid AND m.json.data.media.oembed <> invalid) then
-            desc = m.json.data.media.oembed.description
-        end if
-        return desc
-    end function
-    video.GetScore      = function(): return m.json.data.score : end function
-    video.GetThumb      = function()
-        thumb = ""
-        if (m.json.data.media <> invalid AND m.json.data.media.oembed <> invalid) then
-            thumb = m.json.data.media.oembed.thumbnail_url
-        end if
-        return thumb
-    end function
-    video.GetURL        = function()
-        url = m.json.data.url
-        if (m.json.data.media <> invalid AND m.json.data.media.oembed <> invalid) then
-            url = m.json.data.media.oembed.url
-        end if
-        return url
-    end function
+    end if
+    video["Description"]   = htmlDecode( desc )
+    video["Score"]         = jsonObject.data.score
+    thumb = ""
+    if (jsonObject.data.media <> invalid AND jsonObject.data.media.oembed <> invalid) then
+        thumb = jsonObject.data.media.oembed.thumbnail_url
+    end if
+    video["Thumb"]         = thumb
+    url = jsonObject.data.url
+    if (jsonObject.data.media <> invalid AND jsonObject.data.media.oembed <> invalid) then
+        url = jsonObject.data.media.oembed.url
+    end if
+    video["URL"]           = url
     return video
 End Function
 
@@ -287,18 +272,19 @@ Function GetRedditMetaData(videoList As Object) as Object
     for each video in videoList
         meta                           = CreateObject("roAssociativeArray")
         meta["ContentType"]            = "movie"
-        meta["ID"]                     = video.GetID()
-        meta["TitleSeason"]            = video.GetTitle()
-        meta["Title"]                  = "Score: " + tostr(video.GetScore())
-        meta["Actors"]                 = meta.Title
-        meta["Description"]            = video.GetDesc()
-        meta["Categories"]             = video.GetCategory()
-        meta["ShortDescriptionLine1"]  = meta.TitleSeason
-        meta["ShortDescriptionLine2"]  = meta.Title
-        meta["SDPosterUrl"]            = video.GetThumb()
-        meta["HDPosterUrl"]            = video.GetThumb()
+        meta["ID"]                     = video["ID"]
+        meta["TitleSeason"]            = video["Title"]
+        meta["Title"]                  = "Score: " + tostr(video["Score"])
+        meta["Actors"]                 = meta["Title"]
+        meta["Description"]            = video["Description"]
+        meta["Categories"]             = video["Category"]
+        meta["ShortDescriptionLine1"]  = meta["TitleSeason"]
+        meta["ShortDescriptionLine2"]  = meta["Title"]
+        meta["SDPosterUrl"]            = video["Thumb"]
+        meta["HDPosterUrl"]            = video["Thumb"]
         meta["StreamFormat"]           = "mp4"
         meta["Streams"]                = []
+        meta["PlayStart"]              = 0
         metadata.Push(meta)
     end for
 
@@ -331,7 +317,7 @@ Sub EditRedditSettings()
     screen.Show()
 
     while (true)
-        msg = wait(0, port)
+        msg = wait(2000, port)
 
         if (type(msg) = "roSearchScreenEvent") then
             'print "Event: "; msg.GetType(); " msg: "; msg.GetMessage()
@@ -359,6 +345,9 @@ Sub EditRedditSettings()
                         screen.SetSearchTerms(subredditArray)
                         RegDelete("enabled", "reddit")
                     end if
+                    ' When the user hits 'Add Subreddit' or hits ok on a subreddit on the right side, set the search text
+                    ' to make it easier to edit mistakes
+                    screen.SetSearchText( newOne )
                 end if
             else if (msg.isCleared()) then
                 subredditArray.Clear()
@@ -372,8 +361,8 @@ Sub EditRedditSettings()
             'else
                 'print("Unhandled event on search screen")
             end if
-        'else
-            'print("Unhandled msg type: " + type(msg))
+        else if (msg = invalid) then
+            CheckForMCast()
         end if
     end while
     ' Save the user's subreddits when the settings screen is closing

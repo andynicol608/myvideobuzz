@@ -441,21 +441,10 @@ Function minutesLeft(seconds As Integer) As Integer
 End Function
 
 '******************************************************
-' Pluralize simple strings like "1 minute" or "2 minutes"
-'******************************************************
-Function Pluralize(val As Integer, str As String) As String
-    ret = itostr(val) + " " + str
-    if (val <> 1) then
-        ret = ret + "s"
-    end if
-    return ret
-End Function
-
-'******************************************************
 ' Trim a string
 '******************************************************
 Function strTrim(str As String) As String
-    st=CreateObject("roString")
+    st = CreateObject("roString")
     st.SetString(str)
     return st.Trim()
 End Function
@@ -468,6 +457,19 @@ Function strTokenize(str As String, delim As String) As Object
     st = CreateObject("roString")
     st.SetString(str)
     return st.Tokenize(delim)
+End Function
+
+'******************************************************
+' Decodes HTML entities like &amp; &lt; etc.
+'******************************************************
+Function htmlDecode( encodedStr as String ) as String
+    result = strReplace( encodedStr, "&amp;", "&" )
+    result = strReplace( result, "&lt;", "<" )
+    result = strReplace( result, "&gt;", ">" )
+    result = strReplace( result, "&nbsp;", " " )
+    result = strReplace( result, "&apos;", "'" )
+    result = strReplace( result, "&quot;", Quote() )
+    return result
 End Function
 
 '******************************************************
@@ -929,15 +931,16 @@ End Function
 
 
 Function SimpleJSONAssociativeArray( jsonArray As Object ) As String
+    q = chr(34)
+    regexQuote = CreateObject( "roRegex", q, "ig" )
     jsonString = "{"
-   
     For Each key in jsonArray
         value = jsonArray[ key ]
         valType = type(value)
         if (valType <> "roInvalid") then
-            jsonString = jsonString + Chr(34) + key + Chr(34) + ":"
+            jsonString = jsonString + q + key + q + ":"
             if (isstr(value)) then
-                jsonString = jsonString + Chr(34) + value + Chr(34)
+                jsonString = jsonString + q + regexQuote.ReplaceAll(value, "\\" + q) + q
             else if (isint(value) OR isfloat(value)) then
                 jsonString = jsonString + value.ToStr()
             else if (isbool(value)) then
@@ -947,15 +950,15 @@ Function SimpleJSONAssociativeArray( jsonArray As Object ) As String
             else if (valType = "roAssociativeArray") then
                 jsonString = jsonString + SimpleJSONBuilder( value )
             else
-                print("Unhandled type: " + type(value))
+                print("SimpleJSONAssociativeArray Unhandled type: " + type(value))
                 jsonString = jsonString + tostr(value)
             end If
             jsonString = jsonString + ","
         end if
     Next
-    If Right( jsonString, 1 ) = "," Then
+    if( Right( jsonString, 1 ) = "," ) then
         jsonString = Left( jsonString, Len( jsonString ) - 1 )
-    End If
+    end if
    
     jsonString = jsonString + "}"
     Return jsonString
@@ -964,12 +967,14 @@ End Function
 
 Function SimpleJSONArray( jsonArray As Object ) As String
     jsonString = "["
-   
+    q = chr(34)
+    regexQuote = CreateObject( "roRegex", q, "ig" )
+
     For Each value in jsonArray
         valType = type(value)
         if (valType <> "roInvalid") then
             if (isstr(value)) then
-                jsonString = jsonString + Chr(34) + value + Chr(34)
+                jsonString = jsonString + q + regexQuote.ReplaceAll(value, "\\" + q) + q
             else if (isint(value) OR isfloat(value)) then
                 jsonString = jsonString + value.ToStr()
             else if (isbool(value)) then
@@ -979,7 +984,7 @@ Function SimpleJSONArray( jsonArray As Object ) As String
             else if (valType = "roAssociativeArray") then
                 jsonString = jsonString + SimpleJSONBuilder( value )
             else
-                print("Unhandled type: " + type(value))
+                print("SimpleJSONArray Unhandled type: " + type(value))
                 jsonString = jsonString + tostr(value)
             end if
             jsonString = jsonString + ","
